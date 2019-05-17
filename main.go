@@ -6,6 +6,9 @@ import (
 )
 
 func main() {
-	router := NewRouter(AllRoutes())
+
+	store := &InMemoryBookStore{}
+
+	router := NewRouter(store)
 	log.Fatal(http.ListenAndServe(":8080", router))
 }

@@ -7,42 +7,57 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"golang.org/x/xerrors"
+
 	"github.com/julienschmidt/httprouter"
 )
 
-func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (router *Router) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	writeOKResponse(w, fmt.Sprint("Welcome!"))
 }
 
-func BookCreate(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (router *Router) BookCreate(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	book := &Book{}
 	if err := populateModelFromHandler(w, r, params, book); err != nil {
+		println(err.Error())
 		writeErrorResponse(w, http.StatusUnprocessableEntity, "Unprocessible Entity")
 		return
 	}
-	bookstore[book.ISDN] = book
+	_, err := router.Store.Add(r.Context(), book)
+	if err != nil {
+		println(err.Error())
+		writeErrorResponse(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	writeOKResponse(w, book)
 }
 
-func BookIndex(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	books := make([]*Book, len(bookstore))
-	idx := 0
-	for _, book := range bookstore {
-		books[idx] = book
-		idx++
+func (router *Router) BookIndex(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+
+	books, err := router.Store.GetAll(r.Context())
+	if err != nil {
+		println(err.Error())
+		writeErrorResponse(w, http.StatusInternalServerError, "internal error")
+		return
 	}
+
 	writeOKResponse(w, books)
 }
 
-func BookShow(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (router *Router) BookShow(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	isdn := params.ByName("isdn")
-	book, ok := bookstore[isdn]
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	if !ok {
-		writeErrorResponse(w, http.StatusNotFound, "RecordNotFound")
-	} else {
-		writeOKResponse(w, book)
+	book, err := router.Store.Get(r.Context(), isdn)
+
+	if xerrors.Is(err, BookNotFound) {
+		writeErrorResponse(w, http.StatusNotFound, "book not found")
+		return
+	} else if err != nil {
+		println(err.Error())
+		writeErrorResponse(w, http.StatusInternalServerError, "internal error")
+		return
 	}
+
+	writeOKResponse(w, book)
 }
 
 func ServerErrorHandler(w http.ResponseWriter, r *http.Request, params interface{}) {
